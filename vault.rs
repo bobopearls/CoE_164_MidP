@@ -76,16 +76,15 @@ impl Hamming74 {
         let mut bits = [p1, p2, d1, p3, d2, d3, d4]; 
 
         // syndrome if its not zero means there is an error
-        if symdrome != 0{
-            // the syndrome is the position of the flipped bit
+        if syndrome != 0 {
             let error_pos = syndrome as usize;
-            if error_pos < 1 || error_pos > 7{
-                return Err(MuraError::Decode("Hamming syndrome out of range".into()));
+            if error_pos < 1 || error_pos > 7 {
+                return Err(MuraError::HammingError("Hamming out of range".into()));
             }
-            // flip erroneous bit that converts the 1 indx to 0 indx
+            // Flip the erroneous bit (convert from 1-indexed to 0-indexed)
             bits[error_pos - 1] = !bits[error_pos - 1];
         }
-
+        
         // Extract data bits from the correct codeword
         let d1_corr = bits[2] as u8;
         let d2_corr = bits[4] as u8;
@@ -95,12 +94,44 @@ impl Hamming74 {
         Ok((d1_corr << 3) | (d2_corr << 2) | (d3_corr << 1) | d4_corr)
     }
     
+    // split each byte into two nibbles
+    // raw bytes become hamming 
+    // so upper and lower nibble split that you pass through the encode_niblle then add the parity bits
+    // total of 14 bits after running through the encode_nibble function. which is why *14 the data_len
+    // then after bits_to_bytes, it packs the bit vec into actual bytes w/ MSB first
     pub fn encode(data: &[u8]) -> Vec<u8> {
-        todo!()
+        let mut bits: Vec<bool> = Vec::with_capacity(data.len()*14);  
+        for &byte in data{
+            let upper_nibble = (byte >> 4) & 0x0F;
+            let lower_nibble = byte & 0x0F;
+            bits.extend_from_slice(&Self::encode_nibble(upper_nipple));
+            bits.extend_from_slice(&Self::encode_nibble(lower_nibble));
+        }
+        Self::bits_to_bytes(&bits)
     }
 
+    // just the reverse of encoding, so:
+    // unpack the bytes input to bits, then make a stream of Vec so that it is flat 
+    // 14 bits is one original byte since we added the parity bits to the encoded code
+    // then decode each nibble
+    // then after, combine it back to a byte 
     pub fn decode(encoded: &[u8], original_len: usize) -> MuraResult<Vec<u8>> {
-        todo!()
+        let bits = Self::bytes_to_bits(encoded);
+        let mut result = Vec::with_capacity(original_len);
+        for i in 0..original_len{
+            let start = i * 14;
+            if start + 14 > bits.len(){
+                return Err(MuraError::HammingError("Hamming too short".into()));
+            }
+            let upper_codeword = [bits[start], bits[start+1], bits[start+2], bits[start+3], bits[start+4], bits[start+5], bits[start+6]];
+            let lower_codeword = [bits[start+7], bits[start+8], bits[start+9], bits[start+10], bits[start+11], bits[start+12], bits[start+13]];
+            
+            let upper_nibble = Self::decode_nibble(upper_codeword)?;
+            let lower_nibble = Self::decode_nibble(lower_codeword)?;
+            
+            result.push((upper_nibble << 4) | lower_nibble);
+        }
+        Ok(result)
     }
 }
 
