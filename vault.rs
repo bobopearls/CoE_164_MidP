@@ -70,8 +70,31 @@ impl Hamming74 {
         let s1 = (p1 ^ d1 ^ d2 ^ d4) as u8;
         let s2 = (p2 ^ d1 ^ d3 ^ d4) as u8;
         let s3 = (p3 ^ d2 ^ d3 ^ d4) as u8;
-    }
 
+        let syndrome = s1 | (s2 << 1) | (s3 << 2);
+
+        let mut bits = [p1, p2, d1, p3, d2, d3, d4]; 
+
+        // syndrome if its not zero means there is an error
+        if symdrome != 0{
+            // the syndrome is the position of the flipped bit
+            let error_pos = syndrome as usize;
+            if error_pos < 1 || error_pos > 7{
+                return Err(MuraError::Decode("Hamming syndrome out of range".into()));
+            }
+            // flip erroneous bit that converts the 1 indx to 0 indx
+            bits[error_pos - 1] = !bits[error_pos - 1];
+        }
+
+        // Extract data bits from the correct codeword
+        let d1_corr = bits[2] as u8;
+        let d2_corr = bits[4] as u8;
+        let d3_corr = bits[5] as u8;
+        let d4_corr = bits[6] as u8;
+
+        Ok((d1_corr << 3) | (d2_corr << 2) | (d3_corr << 1) | d4_corr)
+    }
+    
     pub fn encode(data: &[u8]) -> Vec<u8> {
         todo!()
     }
