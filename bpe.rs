@@ -137,7 +137,7 @@ impl BpeTokenizer {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut to_byte_vec: Vec<u8> = Vec::new();
 
-        to_byte_vec.extend(&self.merge_rules.len().to_le_bytes()); //extend vec by number of merge rules
+        to_byte_vec.extend(&(self.merge_rules.len() as u32).to_le_bytes()); //extend vec by number of merge rules
 
         for rule in &self.merge_rules {
             //convert each part of each rule in merge rule into bytes in little endian form, then extend the vec by it
@@ -146,11 +146,15 @@ impl BpeTokenizer {
             to_byte_vec.extend(&rule.result.to_le_bytes());
             to_byte_vec.extend(&rule.priority.to_le_bytes());
         }
+        let total_vocab = self.vocabulary.len() as u32;
+        to_byte_vec.extend(&total_vocab.to_le_bytes());
+
         for byte_list in &self.vocabulary {
-            to_byte_vec.extend(&byte_list.len().to_le_bytes()); //also extend the vec by the bytes in the vocab
+            to_byte_vec.extend(&(byte_list.len() as u32).to_le_bytes());
+            to_byte_vec.extend(byte_list); 
         }
         to_byte_vec
-    }
+        }
 
    pub fn from_bytes(bytes: &[u8]) -> MuraResult<Self> {
     let mut cursor = 0;
