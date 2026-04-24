@@ -147,97 +147,91 @@ impl BpeTokenizer {
             to_byte_vec.extend(&rule.priority.to_le_bytes());
         }
         let total_vocab = self.vocabulary.len() as u32;
-        to_byte_vec.extend(&total_vocab.to_le_bytes());
+        to_byte_vec.extend(&total_vocab.to_le_bytes()); //extend by number of vocab words
 
-        for byte_list in &self.vocabulary {
-            to_byte_vec.extend(&(byte_list.len() as u32).to_le_bytes());
-            to_byte_vec.extend(byte_list); 
+        for byte_list in &self.vocabulary { 
+            to_byte_vec.extend(&(byte_list.len() as u32).to_le_bytes()); //extend by length
+            to_byte_vec.extend(byte_list);  //extend by bytes of the word itself
         }
         to_byte_vec
         }
 
    pub fn from_bytes(bytes: &[u8]) -> MuraResult<Self> {
-    let mut cursor = 0;
+        let mut cursor = 0;
+        //https://docs.rs/bytes/latest/bytes/
+        let rule_count_bytes = [bytes[cursor], bytes[cursor+1], bytes[cursor+2], bytes[cursor+3]]; //get the first 4 bytes for the merge rules
+        let rule_count = u32::from_le_bytes(rule_count_bytes); //convert to u32
+        cursor += 4; //plus 4 to go over the 4 bytes just used
 
-    // 1. Read how many rules are in the file
-    // We grab the bytes at the cursor and manually convert them
-    let rule_count_bytes = [bytes[cursor], bytes[cursor+1], bytes[cursor+2], bytes[cursor+3]];
-    let total_rules = u32::from_le_bytes(rule_count_bytes);
-    cursor += 4;
+        let mut merge_rules = Vec::new();
 
-    let mut merge_rules = Vec::new();
+        for _i in 0..rule_count { //go through all merge rules and get all data for each 
+            //pair_a
+            let pair_a_bytes = [bytes[cursor], bytes[cursor+1], bytes[cursor+2], bytes[cursor+3]];
+            let pair_a = u32::from_le_bytes(pair_a_bytes);
+            cursor += 4; //same idea with the plus 4
 
-    // 2. Loop through and rebuild every rule
-    for _i in 0..total_rules {
-        // Get pair_a
-        let a_bytes = [bytes[cursor], bytes[cursor+1], bytes[cursor+2], bytes[cursor+3]];
-        let pair_a = u32::from_le_bytes(a_bytes);
-        cursor += 4;
+            //pair_b
+            let pair_b_bytes = [bytes[cursor], bytes[cursor+1], bytes[cursor+2], bytes[cursor+3]];
+            let pair_b = u32::from_le_bytes(pair_b_bytes);
+            cursor += 4;
 
-        // Get pair_b
-        let b_bytes = [bytes[cursor], bytes[cursor+1], bytes[cursor+2], bytes[cursor+3]];
-        let pair_b = u32::from_le_bytes(b_bytes);
-        cursor += 4;
+            //result
+            let result_bytes = [bytes[cursor], bytes[cursor+1], bytes[cursor+2], bytes[cursor+3]];
+            let result = u32::from_le_bytes(result_bytes);
+            cursor += 4;
 
-        // Get result
-        let res_bytes = [bytes[cursor], bytes[cursor+1], bytes[cursor+2], bytes[cursor+3]];
-        let result = u32::from_le_bytes(res_bytes);
-        cursor += 4;
+            //priority
+            let priority_bytes = [bytes[cursor], bytes[cursor+1], bytes[cursor+2], bytes[cursor+3]];
+            let priority = u32::from_le_bytes(priority_bytes);
+            cursor += 4;
 
-        // Get priority
-        let prio_bytes = [bytes[cursor], bytes[cursor+1], bytes[cursor+2], bytes[cursor+3]];
-        let priority = u32::from_le_bytes(prio_bytes);
-        cursor += 4;
-
-        // Build the struct and push it
-        let rule = MergeRule { pair_a, pair_b, result, priority };
-        merge_rules.push(rule);
-    }
-
-    // 3. Read how many vocabulary items are in the file
-    let vocab_count_bytes = [bytes[cursor], bytes[cursor+1], bytes[cursor+2], bytes[cursor+3]];
-    let total_vocab = u32::from_le_bytes(vocab_count_bytes);
-    cursor += 4;
-
-    let mut vocabulary = Vec::new();
-
-    // 4. Loop through and rebuild the vocabulary list
-    for _i in 0..total_vocab {
-        // First, find out how long this specific word is
-        let len_bytes = [bytes[cursor], bytes[cursor+1], bytes[cursor+2], bytes[cursor+3]];
-        let word_length = u32::from_le_bytes(len_bytes) as usize;
-        cursor += 4;
-
-        // Now, extract that many bytes for the word
-        let mut word_bytes = Vec::new();
-        for _j in 0..word_length {
-            word_bytes.push(bytes[cursor]);
-            cursor += 1;
+            let rule = MergeRule { pair_a, pair_b, result, priority }; //putting data into a rule
+            merge_rules.push(rule); //combine rules
         }
-        
-        vocabulary.push(word_bytes);
-    }
 
-    // 5. Rebuild the HashMap for fast encoding
-    let mut token_to_id = HashMap::new();
-    for i in 0..vocabulary.len() {
-        let bytes_key = vocabulary[i].clone();
-        let id_value = i as u32;
-        token_to_id.insert(bytes_key, id_value);
-    }
+        let vocab_count_bytes = [bytes[cursor], bytes[cursor+1], bytes[cursor+2], bytes[cursor+3]]; //get the 4 bytes for vocab
+        let vocab_count = u32::from_le_bytes(vocab_count_bytes); //convert to u32
+        cursor += 4;
 
-    // Return the final product!
-    Ok(Self {
-        vocabulary,
-        merge_rules,
-        token_to_id,
-    })
-    }
+        let mut vocabulary = Vec::new();
+
+        for _i in 0..vocab_count { //same idea as merge rules, go through each vocab word
+            //same concept as each data in merge rules
+            let len_bytes = [bytes[cursor], bytes[cursor+1], bytes[cursor+2], bytes[cursor+3]];
+            let word_length = u32::from_le_bytes(len_bytes) as usize;
+            cursor += 4;
+
+            let mut word_size_bytes = Vec::new();
+            for _j in 0..word_length {
+                word_size_bytes.push(bytes[cursor]); //get size of each word in bytes, the combine into a vector
+                cursor += 1;
+            }
+            
+            vocabulary.push(word_size_bytes);
+        }
+
+        //remaking the hashmap for the token_to_id
+        let mut token_to_id = HashMap::new();
+        for i in 0..vocabulary.len() { //iterate through all words in vocab to be added
+            let key = vocabulary[i].clone();
+            let value = i as u32;
+            token_to_id.insert(key, value);
+        }
+
+        Ok(Self {
+            vocabulary,
+            merge_rules,
+            token_to_id,
+            })
+        }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    //integration tests
     #[test]
     fn bpe_byte_level_has_256_tokens() {
         let t = BpeTokenizer::new_byte_level();
@@ -279,6 +273,35 @@ mod tests {
         assert_eq!(t.vocab_size(), t2.vocab_size());
         assert_eq!(t.encode("aaab"), t2.encode("aaab"));
     }
-    // TODO: Write your own unit tests.
-    // The integration test suite will verify correctness.
+    
+    //unit tests
+    #[test]
+    fn train_test() {
+        let corpus = "gagagogogago"; //should be two tokens "ga" and "go"
+        let t = BpeTokenizer::train(corpus, 258).unwrap(); //two new vocab
+        assert_eq!(t.vocab_size(), 258);
+        assert_eq!(t.merge_rules().len(), 2); //since 2 new tokens were added, there should be 2 merge rules
+    }
+
+    #[test]
+    fn encode_test() {
+        let corpus = "gagogagogago";
+        let t = BpeTokenizer::train(corpus, 258).unwrap();
+        let encoded = t.encode("gago");
+        assert_eq!(encoded.len(), 2); //2 is the length
+    }
+
+    #[test]
+    fn encode_then_decode_test() {
+        let corpus = "safe word safe";
+        let t = BpeTokenizer::train(corpus, 259).unwrap();
+        
+        let og_input = "safe";
+        let val = t.encode(og_input);
+        let decoded_output = t.decode(&val).unwrap(); //decode the encoded value
+
+        assert_eq!(og_input, decoded_output);
+    }
+
+    
 }
